@@ -1,0 +1,13 @@
+{
+  "name": "automation-showcase",
+  "version": "1.0.0",
+  "description": "Generic, runnable rebuilds of production automation patterns: read-back sync, write-then-verify AI loop, web-access failover client, n8n shared stages.",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test 01-read-back-sync/*.test.mjs 02-write-then-verify/*.test.mjs 03-web-access-client/*.test.mjs"
+  },
+  "author": "Loy Laborte",
+  "license": "MIT"
+}

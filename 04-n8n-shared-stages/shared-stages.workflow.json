@@ -1,0 +1,70 @@
+{
+  "name": "Shared stages (called by every lane)",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "When called by a lane",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 1 · Normalize: every lane already parsed its own rows; make them one shape.\nconst clean = (s) => String(s || '').trim();\nreturn $input.all().map(({ json }) => ({ json: {\n  company: clean(json.company || json.target || json.name),\n  website: clean(json.website).toLowerCase().replace(/^https?:\\/\\/(www\\.)?/, '').replace(/\\/.*$/, ''),\n  sector: clean(json.sector || json.description),\n  release_url: clean(json.release_url || json.url),\n  source_lane: clean(json.source_lane || 'unknown'),\n  known_websites: json.known_websites || [],\n} }));"
+      },
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 2 · Dedupe + scope, before any paid step.\n// Duplicates: same website already on file, or twice in this batch. Scope: keyword check on the sector text.\nconst IN_SCOPE = /software|saas|data|cloud|platform|analytics|cyber|it services/i;\nconst seen = new Set();\nreturn $input.all().map(({ json }) => {\n  const known = new Set((json.known_websites || []).map((w) => String(w).toLowerCase()));\n  let skip = '';\n  if (!json.company) skip = 'no company name';\n  else if (json.website && (known.has(json.website) || seen.has(json.website))) skip = 'duplicate';\n  else if (json.sector && !IN_SCOPE.test(json.sector)) skip = 'out of scope';\n  if (json.website) seen.add(json.website);\n  return { json: { ...json, keep: !skip, skip_reason: skip } };\n});"
+      },
+      "name": "Dedupe + scope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "={{ $json.keep }}", "value2": true }
+          ]
+        }
+      },
+      "name": "Keep?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {},
+      "name": "Continue to enrichment (paid steps)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [960, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Every row leaves a log line, including the ones that exit early.\nreturn $input.all().map(({ json }) => ({ json: {\n  logged_at: new Date().toISOString(),\n  lane: json.source_lane,\n  company: json.company,\n  outcome: 'skipped',\n  reason: json.skip_reason,\n} }));"
+      },
+      "name": "Log skip",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 420]
+    }
+  ],
+  "connections": {
+    "When called by a lane": { "main": [[{ "node": "Normalize", "type": "main", "index": 0 }]] },
+    "Normalize": { "main": [[{ "node": "Dedupe + scope", "type": "main", "index": 0 }]] },
+    "Dedupe + scope": { "main": [[{ "node": "Keep?", "type": "main", "index": 0 }]] },
+    "Keep?": { "main": [
+      [{ "node": "Continue to enrichment (paid steps)", "type": "main", "index": 0 }],
+      [{ "node": "Log skip", "type": "main", "index": 0 }]
+    ] }
+  },
+  "settings": {},
+  "pinData": {}
+}
